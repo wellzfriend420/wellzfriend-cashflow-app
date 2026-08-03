@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-02 — WFS運用標準化
+
+### 追加
+
+- `OPERATIONS.md`: WFS上の役割、顧客展開手順、リリース確認、Node.js移行ガードレールを追加
+- `SCHEMA.md`: Google Sheetsから将来のDBへ移せるよう、保存先に依存しないデータ契約を追加
+
+### 整理
+
+- GitHubを正本、Apps Scriptを実行環境、Google Driveをテンプレート・顧客運用実体として分離
+- 二社以上の顧客展開に備え、顧客ごとのコピー、設定、実行、確認手順を標準化
+- `README_AI.md`、`PROJECT.md`、`SETUP.md`、`README.md` から運用標準とデータ契約へ参照を追加
+- `SETUP.md` のApps Script反映ファイル数の記述を修正
+
 ## 2026-06-29 — 優先度1機能
 
 ### 追加

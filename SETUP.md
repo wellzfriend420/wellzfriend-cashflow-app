@@ -15,6 +15,8 @@ cashflow-app/
 ├── holiday.gs          # 日本の祝日・営業日判定
 ├── fixedExpense.gs     # 固定支出マスタ、予定生成
 ├── PROJECT.md          # 現行仕様・構造
+├── OPERATIONS.md       # WFS運用、顧客展開、リリース手順
+├── SCHEMA.md           # 保存先に依存しないデータ契約
 ├── CHANGELOG.md        # 変更履歴
 ├── TODO.md             # 優先順位付き改修候補
 └── IDEAS.md            # 中長期アイデア
@@ -28,7 +30,7 @@ cashflow-app/
 ## 2. Apps Scriptプロジェクトを準備
 
 1. スプレッドシートの「拡張機能」→「Apps Script」を開きます。
-2. Apps Script側に次の4ファイルを作成し、同名ファイルの内容を貼り付けます。
+2. Apps Script側に次のファイルを作成し、同名ファイルの内容を貼り付けます。
    - `main.gs`
    - `spreadsheet.gs`
    - `transactions.gs`
@@ -39,6 +41,8 @@ cashflow-app/
 4. 保存後、関数一覧から `setupSpreadsheet` を一度だけ実行し、権限を許可します。
 
 Apps Scriptではプロジェクト内のすべての `.gs` ファイルが共通の名前空間で読み込まれます。ファイルの並び順には依存していません。
+
+Apps Scriptは実行環境です。コード、設計、履歴の正本はGitHubとし、Apps Script側だけに変更を残さないでください。
 
 ## 3. 作成されるシート
 
@@ -89,3 +93,4 @@ GAS URLはブラウザの `localStorage` に保存されます。URL未設定時
 - 編集・削除時に確定済み実績が保護されること
 
 詳細な現行仕様と既知の注意点は `PROJECT.md` を参照してください。
+顧客ごとの展開手順、WFS上の正本管理、将来のNode.js移行に備える運用ルールは `OPERATIONS.md` と `SCHEMA.md` を参照してください。

@@ -15,6 +15,8 @@ Googleスプレッドシート本体、顧客・業務データ、GAS URL、ス�
 
 - [詳細設計・現行仕様](PROJECT.md)
 - [導入手順](SETUP.md)
+- [WFS運用手順](OPERATIONS.md)
+- [データ契約](SCHEMA.md)
 - [変更履歴](CHANGELOG.md)
 - [改善候補](TODO.md)
 - [将来構想](IDEAS.md)
@@ -27,3 +29,4 @@ Googleスプレッドシート本体、顧客・業務データ、GAS URL、ス�
 - `*.gs`: Google Apps Scriptバックエンド
 
 詳細な機能、データ構造、既知の制約は `PROJECT.md` を正本とします。
+WFS上の運用、顧客展開、将来のNode.js移行に備えるルールは `OPERATIONS.md` と `SCHEMA.md` を正本とします。

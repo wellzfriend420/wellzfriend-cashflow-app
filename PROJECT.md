@@ -29,6 +29,8 @@
 | `holiday.gs` | 日本の祝日・営業日判定、休日調整 |
 | `fixedExpense.gs` | 固定支出マスタ、月別予定生成、重複防止 |
 | `SETUP.md` | 導入と更新手順 |
+| `OPERATIONS.md` | WFS運用、顧客展開、リリース手順 |
+| `SCHEMA.md` | 保存先に依存しないデータ契約 |
 | `CHANGELOG.md` | 変更履歴 |
 | `TODO.md` | 優先順位付きの改修計画 |
 | `IDEAS.md` | 中長期の構想 |
@@ -77,13 +79,21 @@
 5. 取得結果をブラウザ内の `APP` にキャッシュし、各画面を再描画します。
 6. GAS URL未設定時は同じ形のデモデータを返し、永続化は行いません。
 
+## WFS運用と将来移行方針
+
+現行版はGASとGoogleスプレッドシートで運用します。ただし、二社以上の顧客展開と将来のNode.js移行を前提に、GitHubを正本、Apps Scriptを実行環境、Google Driveをテンプレートと顧客運用実体の保管場所として分離します。
+
+Node.js移行時に困らないよう、ブラウザ側はスプレッドシート行番号へ依存させず、GASの `doGet` / `doPost` は保存先に依存しないAPI境界として扱います。各シートは将来のDBテーブル候補であり、列、ID、状態、生成IDルールは `SCHEMA.md` を正本として管理します。
+
+顧客ごとのコピー、権限、デプロイ、リリース確認は `OPERATIONS.md` を正本とします。
+
 ## スプレッドシート構成
 
 ### cashflow_transactions
 
 `id, source, sourceId, status, type, partner, description, account, plannedDate, plannedAmount, actualDate, actualAmount, memo, createdAt, updatedAt`
 
-- `source`: `manual` / `receivable` / `payable`
+- `source`: `manual` / `receivable` / `payable` / `fixed_expense`
 - `status`: 予定 / 一部確定 / 確定 / 取消
 - `type`: 入金 / 出金
 - 売掛・買掛との対応は `sourceId`、逆方向は各マスタの `cfId`
@@ -157,6 +167,8 @@
 - Apps Script内の `.gs` は分割されていても共通名前空間です。関数名・定数名を重複させないでください。
 - シート列の追加は `COLUMNS` だけでなく既存シートの移行も必要です。`getOrCreateSheet` は既存シートのヘッダーを自動更新しません。
 - `saveRecord` は渡されなかった列を空文字で上書きします。部分更新ではなく、原則として完全なレコードを渡してください。
+- 新しいシート、列、状態、生成IDルールを追加するときは `SCHEMA.md` を同時に更新してください。
+- Node.js移行前提のため、顧客固有のコード分岐やスプレッドシート行番号に依存する画面処理を追加しないでください。
 - 売掛／買掛と資金繰り取引の二重保存には整合性対策が必要です。
 - 削除時の関連データ、口座削除時の既存取引参照を確認してください。
 - Web公開範囲、GAS URLの共有、スプレッドシート権限を運用前に決めてください。
