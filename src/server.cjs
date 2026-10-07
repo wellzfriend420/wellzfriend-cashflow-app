@@ -21,10 +21,13 @@ async function readBody(req) {
 async function createApplication(options = {}) {
   const origin = new URL(options.origin || process.env.PUBLIC_ORIGIN || 'http://127.0.0.1:3310');
   const secure = origin.protocol === 'https:';
+  const companyName=options.companyName||process.env.APP_COMPANY_NAME||'ウェルノット資金繰り';
+  if(typeof companyName!=='string'||!companyName.trim()||companyName.length>120)throw new Error('Invalid company name');
+  const escapedCompany=companyName.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   if(origin.pathname!=='/' || origin.search || origin.hash || origin.username || origin.password) throw new Error('PUBLIC_ORIGIN must be an origin');
   if(!secure && !['127.0.0.1','localhost','[::1]'].includes(origin.hostname)) throw new Error('HTTPS is required outside localhost');
   const store=options.store || openStore(process.env.DATABASE_PATH || path.join(root,'var/data/cashflow.sqlite'));
-  const ledger=createLedger(store,options.today?{today:options.today}:{}), auth=await createAuth(store,{secure});
+  const ledger=createLedger(store,{...(options.today?{today:options.today}:{}),companyName}), auth=await createAuth(store,{secure});
   let maintenanceDay='';
   const currentDay=()=>options.today?options.today():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const maintain=()=>{try{if(maintenanceDay!==currentDay()){ledger.replenish();maintenanceDay=currentDay();}}catch{console.error('{"event":"fixed_expense_maintenance_failed"}');}};
@@ -78,7 +81,8 @@ async function createApplication(options = {}) {
       if(requestPath==='/index.html'&&!session) {res.writeHead(303,{Location:'/login.html'});return res.end();}
       const file=files.get(requestPath);
       if(!file) throw fault(404,'見つかりません');
-      const content=fs.readFileSync(file);
+      const raw=fs.readFileSync(file);
+      const content=path.extname(file)==='.html'?Buffer.from(raw.toString('utf8').replaceAll('{{APP_COMPANY_NAME}}',escapedCompany)):raw;
       res.writeHead(200,{'Content-Type':mime[path.extname(file)],'Content-Length':content.length});res.end(req.method==='HEAD'?undefined:content);
     } catch(error) {
       const internal=error.code || !/[ぁ-んァ-ヶ一-龠]/.test(error.message);

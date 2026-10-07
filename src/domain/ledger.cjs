@@ -2,7 +2,7 @@
 const {randomUUID}=require('node:crypto');
 const {SHEETS}=require('../contract.cjs');
 const calendar=require('../../assets/cashflow-math.js');
-module.exports=function createLedgerService(repository,{today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}={}) {
+module.exports=function createLedgerService(repository,{companyName=process.env.APP_COMPANY_NAME||'資金繰りシステム',today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}={}) {
 const getAllRecords=name=>({data:repository.all(name)});
 const saveRecord=(name,data)=>repository.save(name,data);
 const deleteRecord=(name,id)=>repository.remove(name,id);
@@ -636,7 +636,7 @@ function get(action,params={}) {
     });
   }
   if(action==='getFixedExpenseMaintenance') return JSON.parse(repository.setting('fixedExpenseMaintenance')||'{"state":"missing"}');
-  if(action==='getSettings') return {companyName:repository.setting('companyName')||'資金繰りシステム'};
+  if(action==='getSettings') return {companyName:repository.setting('companyName')||companyName};
   if(action==='getTransactions') {
     const month=params.all==='true'?null:params.month;
     if(month&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('不正な月です');
