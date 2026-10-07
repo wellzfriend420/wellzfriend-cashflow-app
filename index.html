@@ -3,11 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>日繰り資金繰り管理</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>ウェルノット資金繰り</title>
+<script defer src="/assets/vendor/xlsx.full.min.js"></script>
 <!-- アプリ固有スタイル。画面デザインは assets/styles.css に集約 -->
 <link rel="stylesheet" href="assets/styles.css">
 </head>
@@ -47,6 +44,7 @@
 
 <!-- ===== メインコンテンツ ===== -->
 <div class="main-content">
+<div id="backupBanner" class="alert-banner alert-red hidden" role="alert" style="margin:12px"></div>
 
   <!-- ホーム画面 -->
   <div id="page-home" class="page">
@@ -73,11 +71,11 @@
       <!-- 予測 -->
       <div class="summary-grid">
         <div class="summary-card">
-          <div class="label">今月末予測</div>
+          <div class="label">今月末基本予測</div>
           <div class="value balance" id="eomForecast">―</div>
         </div>
         <div class="summary-card">
-          <div class="label">30日後予測</div>
+          <div class="label">30日後基本予測</div>
           <div class="value balance" id="day30Forecast">―</div>
         </div>
         <div class="summary-card">
@@ -91,7 +89,7 @@
       </div>
 
       <!-- アラート -->
-      <div id="alertSection" class="space-y-3"></div>
+      <div id="homeOverdue"></div><p id="day30Reference"></p><div id="alertSection" class="space-y-3"></div>
 
       <!-- 直近の入出金 -->
       <div class="card">
@@ -106,6 +104,7 @@
     <div class="page-header">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <h1>日繰り</h1>
+        <button class="btn btn-outline btn-sm" onclick="ActualCorrections.history()">実績の訂正・取消履歴</button>
         <div style="display:flex;gap:6px;align-items:center;">
           <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:white" onclick="openAccountFilterModal()">
             🏦 口座<span id="accountFilterCount" style="font-weight:700"></span>
@@ -114,24 +113,28 @@
             📥 Excel出力
           </button>
           <div class="mode-selector" style="background:rgba(255,255,255,0.15);">
-            <button class="mode-btn active" id="modePredict" onclick="setMode('predict')" style="color:white">予測</button>
+            <button class="mode-btn active" id="modePredict" onclick="setMode('predict')" style="color:var(--primary)">予測</button>
             <button class="mode-btn" id="modeActual" onclick="setMode('actual')" style="color:rgba(255,255,255,0.7)">実績</button>
             <button class="mode-btn" id="modeDiff" onclick="setMode('diff')" style="color:rgba(255,255,255,0.7)">差異</button>
           </div>
         </div>
       </div>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px"><button class="btn btn-outline" id="cashflowPrevious">前月</button><label>表示年月 <input type="month" id="cashflowMonth" aria-label="表示年月"></label><button class="btn btn-outline" id="cashflowNext">翌月</button><button class="btn btn-outline" id="cashflowToday">今月へ</button><button class="btn btn-outline" id="periodExport">期間Excel出力</button></div>
+    <p id="fixedMaintenanceStatus" role="status" style="padding:0 12px;font-size:12px"></p>
+    <div id="cashflowOverdue" style="padding:12px"></div>
     <!-- 月タブ -->
     <div class="month-tabs" id="monthTabs"></div>
     <!-- 日繰りサマリー -->
     <div style="padding:10px 16px;background:white;border-bottom:1px solid var(--border);">
       <div style="display:flex;gap:16px;font-size:12px;">
         <div><span style="color:var(--text-muted)">月初残高:</span> <span class="amount income" id="monthOpenBalance">―</span></div>
-        <div><span style="color:var(--text-muted)">月末予測:</span> <span class="amount balance" id="monthCloseBalance">―</span></div>
+        <div><span style="color:var(--text-muted)" id="monthCloseLabel">月末予測:</span> <span class="amount balance" id="monthCloseBalance">―</span></div>
       </div>
     </div>
     <!-- テーブル（通帳形式：1取引1行、口座ごとに取引額・残高の2列） -->
     <div class="table-wrapper" style="background:white;">
+      <p style="font-size:12px;color:var(--text-muted);padding:8px 12px">期限超過した未確定予定は元の予定日に表示し、基本予測には含めません。基本予測は登録済み実績残高と本日以降の未決済予定で計算します。</p>
       <table class="cashflow-table" id="cashflowTable">
         <thead id="cashflowTableHead">
           <!-- 口座列はJSで動的生成（選択口座数に応じて変動） -->
@@ -204,19 +207,9 @@
       <h1>設定</h1>
     </div>
     <div class="p-4 space-y-4">
-      <!-- GAS接続設定 -->
-      <div class="card">
-        <div class="card-header">スプレッドシート接続</div>
-        <div class="section">
-          <div class="form-group">
-            <label class="form-label">GAS Web App URL</label>
-            <input type="url" id="gasUrlInput" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
-          </div>
-          <button class="btn btn-primary w-full" onclick="saveGasUrl()">接続先を保存</button>
-          <div id="connectionStatus" class="mt-3"></div>
-        </div>
-      </div>
+      <div class="card"><div class="card-header">ログイン・バックアップ</div><div class="section"><p id="backupStatus" style="font-size:13px;margin-bottom:14px">バックアップ状態を確認しています</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-outline" onclick="openPasswordForm()">パスワード変更</button><button class="btn btn-outline" onclick="logout()">ログアウト</button></div></div></div>
       <!-- 会社設定 -->
+      <div class="card"><div class="card-header">口座管理</div><div class="section"><button class="btn btn-outline w-full" onclick="navigate('accounts')">口座・残高基準日を管理</button></div></div>
       <div class="card">
         <div class="card-header">会社設定</div>
         <div class="section">
@@ -245,6 +238,7 @@
           </div>
         </div>
         <div id="fixedExpenseList"></div>
+        <div class="section"><button class="btn btn-outline w-full" onclick="PaymentSchedules.list()">変動額の定期支出・借入予定表</button></div>
         <div class="section">
           <button class="btn btn-primary w-full btn-sm" onclick="openFixedExpenseForm()">+ 固定支出を追加</button>
         </div>
@@ -285,6 +279,11 @@
 <div id="modalContainer"></div>
 
 <!-- 画面制御・API通信・残高計算・Excel出力は assets/app.js に集約 -->
+<script src="assets/cashflow-math.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/overdue.js"></script>
+<script src="assets/corrections.js"></script>
+<script src="assets/schedule-input.js"></script>
+<script src="assets/schedules.js"></script>
 </body>
 </html>

@@ -1,0 +1,79 @@
+name: wfs-cashflow
+services:
+  cashflow-web:
+    image: wfs/wellnot-cashflow:0.6.1
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Set a verified Node 24 image digest in .env}
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 64
+    environment:
+      LISTEN_HOST: 0.0.0.0
+      PORT: "3000"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://cashflow.wellzfriend.com}
+      DATABASE_PATH: /var/lib/cashflow/cashflow.sqlite
+      BACKUP_STATUS_DIR: /var/lib/cashflow-status
+    ports: ["127.0.0.1:3310:3000"]
+    volumes:
+      - /srv/wfs/cashflow/data:/var/lib/cashflow
+      - /srv/wfs/cashflow/backup-status:/var/lib/cashflow-status:ro
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    networks: [cashflow_private, edge]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  backup:
+    image: wfs/wellnot-cashflow:0.6.1
+    command: [node, tools/backup-worker.cjs]
+    depends_on:
+      cashflow-web: {condition: service_healthy}
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 32
+    network_mode: none
+    environment:
+      DATABASE_PATH: /var/lib/cashflow/cashflow.sqlite
+      BACKUP_DIR: /var/backups/cashflow
+      BACKUP_STATUS_DIR: /var/lib/cashflow-status
+    volumes:
+      - /srv/wfs/cashflow/data:/var/lib/cashflow:ro
+      - /var/backups/wfs/cashflow:/var/backups/cashflow
+      - /srv/wfs/cashflow/backup-status:/var/lib/cashflow-status
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    healthcheck:
+      test: [CMD, node, tools/backup-status.cjs]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+networks:
+  cashflow_private:
+    driver: bridge
+
+  edge:
+    external: true
+    name: enchan-n8n_edge
+

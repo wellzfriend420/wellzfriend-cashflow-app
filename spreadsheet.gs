@@ -1,131 +1,113 @@
-// ============================================================
-// スプレッドシート操作 ユーティリティ
-// ============================================================
+// Storage adapter: stage all changes, then commit in one atomic Sheets batch.
+let storeDraft = null;
 
-/**
- * スプレッドシートを取得（キャッシュ付き）
- */
 function getSpreadsheet() {
-  return SpreadsheetApp.openById(SPREADSHEET_ID);
+  const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || SPREADSHEET_ID;
+  return SpreadsheetApp.openById(id);
 }
 
-/**
- * 指定シートを取得（存在しない場合は作成）
- */
-function getOrCreateSheet(sheetName) {
+function getOrCreateSheet(name) {
+  if (!COLUMNS[name]) throw new Error('Unknown sheet: ' + name);
   const ss = getSpreadsheet();
-  let sheet = ss.getSheetByName(sheetName);
-
+  let sheet = ss.getSheetByName(name);
   if (!sheet) {
-    // シートが存在しない場合は新規作成してヘッダーを設定
-    sheet = ss.insertSheet(sheetName);
-    const cols = COLUMNS[sheetName];
-    if (cols) {
-      sheet.getRange(1, 1, 1, cols.length).setValues([cols]);
-      // ヘッダー行のスタイル設定
-      sheet.getRange(1, 1, 1, cols.length)
-        .setBackground('#1A2D45')
-        .setFontColor('#FFFFFF')
-        .setFontWeight('bold');
-      sheet.setFrozenRows(1);
-    }
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, COLUMNS[name].length).setValues([COLUMNS[name]]);
+    sheet.setFrozenRows(1);
   }
-
   return sheet;
 }
 
-/**
- * シートの全データを取得してオブジェクト配列に変換
- */
-function getAllRecords(sheetName) {
-  const sheet = getOrCreateSheet(sheetName);
-  const data = sheet.getDataRange().getValues();
-
-  if (data.length <= 1) return { data: [] }; // ヘッダーのみ
-
-  const headers = data[0];
-  const records = [];
-
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    // 空行スキップ
-    if (!row[0]) continue;
-
+function readSheetRecords(sheet, name) {
+  const values = sheet.getDataRange().getValues();
+  if (JSON.stringify(values[0]) !== JSON.stringify(COLUMNS[name])) {
+    throw new Error(name + ': 列定義が異なります。先にsetupSpreadsheetを実行してください');
+  }
+  return values.slice(1).filter(row => row[0] !== '' && row[0] != null).map(row => {
     const record = {};
-    headers.forEach((header, j) => {
-      let val = row[j];
-      // 日付オブジェクトを文字列に変換
-      if (val instanceof Date) {
-        val = Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
-      }
-      record[header] = val === '' ? null : val;
+    COLUMNS[name].forEach((key, i) => {
+      const value = row[i];
+      record[key] = value instanceof Date
+        ? Utilities.formatDate(value, 'Asia/Tokyo', key.endsWith('At') ? "yyyy-MM-dd'T'HH:mm:ssXXX" : 'yyyy-MM-dd')
+        : value === '' || value === undefined ? null : value;
     });
-    records.push(record);
-  }
-
-  return { data: records };
-}
-
-/**
- * レコードを保存（upsert: 存在すれば更新、なければ追加）
- */
-function saveRecord(sheetName, data) {
-  const sheet = getOrCreateSheet(sheetName);
-  const cols = COLUMNS[sheetName];
-  if (!cols) return { error: 'Unknown sheet: ' + sheetName };
-
-  const allData = sheet.getDataRange().getValues();
-  const headers = allData[0];
-
-  // IDでの行検索
-  const idIdx = headers.indexOf('id');
-  let targetRow = -1;
-
-  if (idIdx >= 0 && data.id) {
-    for (let i = 1; i < allData.length; i++) {
-      if (String(allData[i][idIdx]) === String(data.id)) {
-        targetRow = i + 1; // スプレッドシートの行番号（1始まり）
-        break;
-      }
-    }
-  }
-
-  // 書き込む値の配列を作成
-  const rowData = cols.map(col => {
-    const val = data[col];
-    // null/undefinedは空文字に
-    return val === null || val === undefined ? '' : val;
+    return record;
   });
-
-  if (targetRow > 0) {
-    // 既存行を更新
-    sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
-  } else {
-    // 新規行を末尾に追加
-    const lastRow = sheet.getLastRow();
-    sheet.getRange(lastRow + 1, 1, 1, rowData.length).setValues([rowData]);
-  }
-
-  return { success: true, id: data.id };
 }
 
-/**
- * レコードを削除（IDで行を特定して削除）
- */
-function deleteRecord(sheetName, id) {
-  const sheet = getOrCreateSheet(sheetName);
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const idIdx = headers.indexOf('id');
+function getAllRecords(name) {
+  if (!COLUMNS[name]) throw new Error('Unknown sheet: ' + name);
+  if (storeDraft) return { data: JSON.parse(JSON.stringify(storeDraft[name].records)) };
+  const sheet = getSpreadsheet().getSheetByName(name);
+  if (!sheet) throw new Error('初期設定が必要です: ' + name);
+  return { data: readSheetRecords(sheet, name) };
+}
 
-  if (idIdx < 0) return { error: 'id column not found' };
-
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][idIdx]) === String(id)) {
-      sheet.deleteRow(i + 1);
-      return { success: true };
-    }
+function withStoreTransaction(work) {
+  if (storeDraft) return work();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = getSpreadsheet();
+    storeDraft = {};
+    Object.keys(COLUMNS).forEach(name => {
+      const sheet = ss.getSheetByName(name);
+      if (!sheet) throw new Error('初期設定が必要です: ' + name);
+      const records = readSheetRecords(sheet, name);
+      storeDraft[name] = { sheet, records, original: JSON.stringify(records), originalLength: sheet.getLastRow() - 1 };
+    });
+    const result = work();
+    if (result && result.error) throw new Error(result.error);
+    const requests = [];
+    Object.keys(storeDraft).forEach(name => {
+      const entry = storeDraft[name];
+      if (JSON.stringify(entry.records) === entry.original) return;
+      const rowCount = Math.max(entry.originalLength, entry.records.length) + 1;
+      const sheetId = entry.sheet.getSheetId();
+      if (rowCount > entry.sheet.getMaxRows()) {
+        requests.push({ appendDimension: { sheetId, dimension: 'ROWS', length: rowCount - entry.sheet.getMaxRows() } });
+      }
+      const rows = entry.records.map(record => ({ values: COLUMNS[name].map(key => {
+        const value = record[key];
+        if (value === null || value === undefined || value === '') return {};
+        if (typeof value === 'number') {
+          if (!Number.isFinite(value)) throw new Error('不正な数値: ' + key);
+          return { userEnteredValue: { numberValue: value } };
+        }
+        // Explicit strings prevent formula injection from names and memos.
+        return { userEnteredValue: typeof value === 'boolean' ? { boolValue: value } : { stringValue: String(value) } };
+      }) }));
+      requests.push({ updateCells: { range: { sheetId, startRowIndex: 1, endRowIndex: rowCount,
+        startColumnIndex: 0, endColumnIndex: COLUMNS[name].length }, rows, fields: 'userEnteredValue' } });
+    });
+    if (requests.length) Sheets.Spreadsheets.batchUpdate({ requests }, ss.getId());
+    return result;
+  } finally {
+    storeDraft = null;
+    lock.releaseLock();
   }
+}
 
-  return { error: 'Record not found: ' + id };
+function saveRecord(name, data) {
+  if (!storeDraft) throw new Error('保存はwithStoreTransaction内で実行してください');
+  if (!COLUMNS[name] || name === SHEETS.SETTINGS) throw new Error('Invalid writable sheet');
+  if (!/^[A-Za-z0-9_-]{1,120}$/.test(String(data.id || ''))) throw new Error('不正なIDです');
+  const records = storeDraft[name].records;
+  const index = records.findIndex(row => String(row.id) === String(data.id));
+  const previous = index < 0 ? {} : records[index];
+  const record = {};
+  COLUMNS[name].forEach(key => { record[key] = data[key] === undefined ? (previous[key] ?? null) : data[key]; });
+  record.createdAt = previous.createdAt || data.createdAt || new Date().toISOString();
+  record.updatedAt = new Date(Math.max(Date.now(), (Date.parse(previous.updatedAt) || 0) + 1)).toISOString();
+  if (index < 0) records.push(record); else records[index] = record;
+  return { success: true, id: record.id, updatedAt: record.updatedAt };
+}
+
+function deleteRecord(name, id) {
+  if (!storeDraft || !storeDraft[name]) throw new Error('Invalid delete transaction');
+  const records = storeDraft[name].records;
+  const index = records.findIndex(row => String(row.id) === String(id));
+  if (index < 0) return { success: true, id, alreadyDeleted: true };
+  records.splice(index, 1);
+  return { success: true, id };
 }

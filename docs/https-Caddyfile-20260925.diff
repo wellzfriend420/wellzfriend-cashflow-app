@@ -1,0 +1,16 @@
+--- Caddyfile.before
++++ Caddyfile.after
+@@ -40,3 +40,13 @@
+     }
+ 
+ }
++
++cashflow.wellzfriend.com {
++    encode zstd gzip
++    reverse_proxy cashflow-web:3000
++    header -Server
++    log {
++        output stdout
++        format json
++    }
++}

@@ -1,96 +1,37 @@
-# 日繰り資金繰り管理システム セットアップガイド
+# セットアップ（本番未反映の修正候補）
 
-## ファイル構成
+## 現行版 0.6.1
 
-```text
-cashflow-app/
-├── index.html          # 画面構造
-├── assets/
-│   ├── styles.css      # 画面スタイル
-│   └── app.js          # 画面制御、API通信、残高計算、Excel出力
-├── main.gs             # GAS設定、GET/POSTの入口
-├── spreadsheet.gs      # シート作成、取得、保存、削除
-├── transactions.gs     # 月別の資金繰り取引取得
-├── setup.gs            # 初期セットアップ、確認用関数
-├── holiday.gs          # 日本の祝日・営業日判定
-├── fixedExpense.gs     # 固定支出マスタ、予定生成
-├── PROJECT.md          # 現行仕様・構造
-├── OPERATIONS.md       # WFS運用、顧客展開、リリース手順
-├── SCHEMA.md           # 保存先に依存しないデータ契約
-├── CHANGELOG.md        # 変更履歴
-├── TODO.md             # 優先順位付き改修候補
-└── IDEAS.md            # 中長期アイデア
-```
+正本のNode/VPS実装を使用。新規の依存追加・既存schema4の構造移行なし。旧GASセットアップは履歴であり現行VPSへ実行しない。
 
-## 1. Googleスプレッドシートを作成
+## Node.js 0.5.0
 
-1. Googleスプレッドシートで空のブックを作成します。
-2. URLの `/d/` と `/edit` の間にあるスプレッドシートIDを控えます。
+既存VPS・認証・公開URL・DBパスを引き継ぐ。追加依存や外部サービスは不要。`node --test tests/*.test.cjs` 後、既存の固定Node24イメージで配備する。schema2→3は起動時更新なのでバックアップと隔離復元検証を先に実施。配備・旧版復帰は [OPERATIONS](OPERATIONS.md)、入力方法は [予定表仕様](docs/payment-schedules-050.md)。
 
-## 2. Apps Scriptプロジェクトを準備
+> 2026-09-24: VPS版の新規セットアップは `docs/vps-implementation.md` に従う。下記は旧GAS版の記録。VPS版でGAS公開やスプレッドシート設定を実施しない。
 
-1. スプレッドシートの「拡張機能」→「Apps Script」を開きます。
-2. Apps Script側に次のファイルを作成し、同名ファイルの内容を貼り付けます。
-   - `main.gs`
-   - `spreadsheet.gs`
-   - `transactions.gs`
-   - `setup.gs`
-   - `holiday.gs`
-   - `fixedExpense.gs`
-3. `main.gs` の `SPREADSHEET_ID` を実際のIDへ変更します。
-4. 保存後、関数一覧から `setupSpreadsheet` を一度だけ実行し、権限を許可します。
+運用先を決定してから実施する。この文書の更新は本番配備の完了を意味しない。
 
-Apps Scriptではプロジェクト内のすべての `.gs` ファイルが共通の名前空間で読み込まれます。ファイルの並び順には依存していません。
+## ローカル検証
 
-Apps Scriptは実行環境です。コード、設計、履歴の正本はGitHubとし、Apps Script側だけに変更を残さないでください。
+- Node.jsで node --test tests/ledger.test.cjs tests/cashflow.test.cjs。
+- 画面は node tools/preview.cjs で127.0.0.1:8769に開く。
+- 画面の接続先を同じサーバーの /api に設定すると合成データを操作できる。データはメモリー内のみで、終了時に失われる。本番利用は禁止。
 
-## 3. 作成されるシート
+## Google構成を選択する場合
 
-| シート | 用途 |
-|---|---|
-| `cashflow_transactions` | 入出金予定・実績 |
-| `receivables` | 売掛金 |
-| `payables` | 買掛金 |
-| `accounts` | 口座マスタと現在残高 |
-| `partners` | 取引先マスタ |
-| `settings` | 将来の設定保存領域 |
-| `fixed_expenses` | 固定支出マスタ |
+1. 運用先専用の空ブックを準備する。親テンプレートをコピーする場合は、コピー側のサンプル口座等を確認して整理する。実データを一括削除しない。
+2. GASへmain.gs、spreadsheet.gs、ledger.gs、transactions.gs、setup.gs、holiday.gs、fixedExpense.gsの7ファイルとappsscript.jsonを反映する。
+3. スクリプトプロパティSPREADSHEET_IDに運用先を設定。ソースにはIDを埋め込まない。
+4. 高度なGoogle Sheetsサービスを有効化。標準Cloudプロジェクトの場合はSheets APIの有効化も確認する。manifestは日本時間と必要スコープを指定している。
+5. setupSpreadsheetを明示実行する。7シートの列と日本時間を設定する。架空口座は作らない。列が異なる既存データがあれば停止するので、個別の移行確認を行う。
+6. 利用者・認証・画面配信方式を決める。匿名で全員に公開しない。Google認証付きGASと別オリジンの画面の組合せでは、単にURLを設定するだけでは動作しないことがある。GASからの画面配信などを検証する。
+7. 合成データの専用テスト環境で保存・更新・削除・再送・一括更新失敗・Excelを検証する。実Google APIの原子性・認証・エラー応答を含む確認はまだ未実施。
+8. 実口座を登録し、利用者確認済みの基準日終了残高を入力。初期売掛・買掛残と固定支出も確認する。
+9. バックアップと復元を検証した後に運用開始する。
 
-列定義の正本は `main.gs` の `COLUMNS` です。既存シートの列順を変える場合は、移行手順を用意してから変更してください。
+ブラウザー設定はURLと会社名。日繰りExcelは表示月・選択口座の帳票であり、全データのバックアップではない。
 
-## 4. Webアプリとしてデプロイ
+## VPS構成を選択する場合
 
-1. Apps Scriptで「デプロイ」→「新しいデプロイ」を選びます。
-2. 種類を「ウェブアプリ」にします。
-3. 実行ユーザーとアクセス範囲を運用方針に合わせて設定します。
-4. デプロイ後のWebアプリURLを控えます。
-5. コード更新後は、新しいバージョンとしてデプロイを更新します。
-
-## 5. 画面を起動
-
-`index.html` と `assets` フォルダを同じ構成のままWebサーバーへ配置します。ローカル確認では、簡易Webサーバー経由で `index.html` を開くのが確実です。
-
-画面の「設定」で次を入力します。
-
-- GAS Web App URL
-- 会社名
-
-GAS URLはブラウザの `localStorage` に保存されます。URL未設定時はデモデータで動作し、スプレッドシートへは保存されません。
-
-## 6. Excel出力
-
-日繰り画面の「Excel出力」から、表示中の月・モード・選択口座を `.xlsx` で保存します。処理は `assets/app.js` の `exportCashflowToExcel` が担当し、SheetJSをCDNから読み込みます。
-
-## 7. 更新時の確認
-
-- `main.gs` の公開アクション名と `assets/app.js` の呼び出し名が一致していること
-- `COLUMNS` と既存シートのヘッダー・列順が一致していること
-- 売掛／買掛の保存時に対応する資金繰り取引も保存されること
-- 予測／実績／差異の各モードで日付と金額が意図どおり選ばれること
-- 口座フィルター後の月初・月末残高とExcel出力が画面表示に一致すること
-- 固定支出の対象月ごとに生成取引が1件だけ存在すること
-- 土日祝日の翌営業日／前営業日調整が意図どおりであること
-- 編集・削除時に確定済み実績が保護されること
-
-詳細な現行仕様と既知の注意点は `PROJECT.md` を参照してください。
-顧客ごとの展開手順、WFS上の正本管理、将来のNode.js移行に備える運用ルールは `OPERATIONS.md` と `SCHEMA.md` を参照してください。
+移行対象・SQLite/PostgreSQL・残工数・バックアップ案は [移行調査](docs/migration-assessment.md) を参照。Node.jsバックエンド、DB、認証、本番用配備定義は今回まだ作成していない。

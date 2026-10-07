@@ -24,3 +24,12 @@ node_modules/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Runtime databases and backup material
+var/
+*.sqlite
+*.sqlite-*
+*.db
+*.sha256
+*.manifest.json
+test-results/

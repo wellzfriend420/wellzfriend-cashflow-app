@@ -13,9 +13,7 @@ function saveFixedExpense(data) {
   const validationError = validateFixedExpense(normalized);
   if (validationError) return { error: validationError };
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
+  {
     const existing = getFixedExpenseById(normalized.id);
     const now = new Date().toISOString();
     normalized.createdAt = existing && existing.createdAt ? existing.createdAt : (data.createdAt || now);
@@ -36,8 +34,6 @@ function saveFixedExpense(data) {
       protected: removed.protected + generated.protected,
       removed: removed.removed
     };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -45,9 +41,7 @@ function saveFixedExpense(data) {
 function deleteFixedExpense(id, scope) {
   if (!id) return { error: '固定支出IDがありません' };
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
+  {
     const removed = removeGeneratedFixedExpenseTransactions(id, scope === 'all' ? 'all' : 'future');
     const masterResult = deleteRecord(SHEETS.FIXED_EXPENSES, id);
     if (masterResult.error && masterResult.error.indexOf('Record not found') !== 0) {
@@ -59,14 +53,12 @@ function deleteFixedExpense(id, scope) {
       removed: removed.removed,
       protected: removed.protected
     };
-  } finally {
-    lock.releaseLock();
   }
 }
 
 /** 月表示時の自己修復用。該当月の固定支出予定がなければ生成する。 */
 function ensureFixedExpenseTransactionsForMonth(month) {
-  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) return;
 
   const masters = getAllRecords(SHEETS.FIXED_EXPENSES).data || [];
   masters.forEach(master => {
@@ -138,38 +130,15 @@ function fixedExpenseTransactionId(masterId, month) {
 
 /** 指定範囲の未確定生成予定を削除。確定実績は保護する。 */
 function removeGeneratedFixedExpenseTransactions(masterId, scope) {
-  const sheet = getOrCreateSheet(SHEETS.TRANSACTIONS);
-  const values = sheet.getDataRange().getValues();
-  if (values.length <= 1) return { removed: 0, protected: 0 };
-
-  const headers = values[0];
-  const sourceIdx = headers.indexOf('source');
-  const sourceIdIdx = headers.indexOf('sourceId');
-  const plannedDateIdx = headers.indexOf('plannedDate');
-  const actualDateIdx = headers.indexOf('actualDate');
-  const actualAmountIdx = headers.indexOf('actualAmount');
-  const todayKey = getTodayKey();
-  let removed = 0;
-  let protectedCount = 0;
-
-  for (let i = values.length - 1; i >= 1; i--) {
-    const row = values[i];
-    if (String(row[sourceIdx]) !== FIXED_EXPENSE_SOURCE || String(row[sourceIdIdx]) !== String(masterId)) continue;
-
-    const hasActual = !!row[actualDateIdx] || row[actualAmountIdx] !== '' && row[actualAmountIdx] !== null;
-    if (hasActual) {
-      protectedCount += 1;
-      continue;
-    }
-
-    const plannedDate = sheetValueToDateKey(row[plannedDateIdx]);
-    if (scope === 'future' && plannedDate < todayKey) continue;
-
-    sheet.deleteRow(i + 1);
-    removed += 1;
-  }
-
-  return { removed: removed, protected: protectedCount };
+  let removed = 0, protectedCount = 0;
+  getAllRecords(SHEETS.TRANSACTIONS).data.forEach(t => {
+    if (t.source !== FIXED_EXPENSE_SOURCE || t.sourceId !== masterId) return;
+    if (hasActualResult(t)) { protectedCount++; return; }
+    if (scope === 'future' && t.plannedDate < getTodayKey()) return;
+    deleteRecord(SHEETS.TRANSACTIONS, t.id);
+    removed++;
+  });
+  return { removed, protected: protectedCount };
 }
 
 function normalizeFixedExpense(data) {
@@ -193,9 +162,9 @@ function normalizeFixedExpense(data) {
 function validateFixedExpense(data) {
   if (!data.name) return '支出名は必須です';
   if (!data.payee) return '支払先は必須です';
-  if (!(data.amount > 0)) return '金額は1円以上で入力してください';
-  if (!(data.day >= 1 && data.day <= 31)) return '基本引き落とし日は1〜31で入力してください';
-  if (!/^\d{4}-\d{2}$/.test(data.startMonth) || !/^\d{4}-\d{2}$/.test(data.endMonth)) {
+  if (!Number.isSafeInteger(data.amount) || !(data.amount > 0)) return '金額は1円以上で入力してください';
+  if (!Number.isInteger(data.day) || !(data.day >= 1 && data.day <= 31)) return '基本引き落とし日は1〜31で入力してください';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(data.endMonth)) {
     return '開始月と終了月を入力してください';
   }
   if (data.startMonth > data.endMonth) return '終了月は開始月以降にしてください';
@@ -222,7 +191,7 @@ function hasActualResult(transaction) {
 }
 
 function enumerateMonths(startMonth, endMonth) {
-  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) return [];
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(endMonth)) return [];
 
   const start = startMonth.split('-').map(Number);
   const end = endMonth.split('-').map(Number);

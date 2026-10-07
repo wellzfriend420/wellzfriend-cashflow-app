@@ -1,0 +1,13 @@
+.git
+.env*
+var
+tests
+test-results
+*.gs
+*.sqlite*
+*.db
+*.md
+docs
+node_modules
+tools/port-source.cjs
+tools/port-ui.cjs

@@ -541,3 +541,10 @@
   .master-row-actions { width: 100%; }
   .master-row-actions .btn { flex: 1; }
 }
+
+/* Local replacements for the former CDN reset and utilities. */
+html {line-height:1.5;-webkit-text-size-adjust:100%} body,h1,h2,h3,p {margin:0} button,input,select,textarea {font:inherit;color:inherit} button {cursor:pointer;border:0;background:none} button:disabled{opacity:.55;cursor:wait} table {border-collapse:collapse} input,textarea,select{border:1px solid var(--border)} svg{display:block;vertical-align:middle} .hidden{display:none!important}.p-4{padding:16px}.m-4{margin:16px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.w-full{width:100%}.flex-1{flex:1}.space-y-4>:not([hidden])~:not([hidden]){margin-top:16px}.space-y-3>:not([hidden])~:not([hidden]){margin-top:12px}.login-panel{width:calc(100% - 32px);max-width:420px;margin:12vh auto}.login-panel .section{padding:24px}:focus-visible{outline:3px solid #68a5df;outline-offset:2px}
+
+.ps-wide{max-width:1100px!important;width:96vw!important}.ps-panel{padding:24px;overflow:auto;max-height:85vh}.ps-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0}.ps-field{display:block;margin:8px 0}.ps-scroll{overflow:auto;margin:16px 0}.ps-table{border-collapse:collapse;width:100%;min-width:780px}.ps-table td,.ps-table th{padding:8px;border-bottom:1px solid var(--border)}.ps-table input{min-width:110px}.ps-table input[type=date]{min-width:150px}.ps-occurrence{padding:16px 0;border-bottom:1px solid var(--border)}.ps-leg{margin:10px 0}.ps-list-item{display:block;width:100%;margin:12px 0;text-align:left}
+.ps-confirm{position:absolute;inset:20% 5% auto;padding:24px;background:var(--surface,#fff);border:2px solid var(--primary,#123);border-radius:12px;box-shadow:0 0 0 100vmax #0007;z-index:10000}.ps-confirm .btn{margin:8px}
+.correction-summary div {padding:7px 0;border-bottom:1px solid var(--border)} .correction-summary dt {font-size:12px;color:var(--text-muted)} .correction-summary dd {margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere} .correction-history {display:block;width:100%;text-align:left;margin:8px 0;white-space:normal}

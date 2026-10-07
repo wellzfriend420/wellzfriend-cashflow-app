@@ -37,14 +37,14 @@ const COLUMNS = {
   ],
   receivables: [
     'id', 'partner', 'invoiceDate', 'amount', 'dueDate',
-    'paidAmount', 'status', 'cfId', 'memo', 'createdAt', 'updatedAt'
+    'paidAmount', 'status', 'cfId', 'memo', 'createdAt', 'updatedAt', 'account'
   ],
   payables: [
     'id', 'partner', 'occDate', 'amount', 'dueDate',
-    'paidAmount', 'status', 'cfId', 'memo', 'createdAt', 'updatedAt'
+    'paidAmount', 'status', 'cfId', 'memo', 'createdAt', 'updatedAt', 'account'
   ],
   accounts: [
-    'id', 'name', 'bank', 'type', 'balance', 'sort', 'createdAt', 'updatedAt'
+    'id', 'name', 'bank', 'type', 'balance', 'sort', 'createdAt', 'updatedAt', 'balanceDate'
   ],
   partners: [
     'id', 'name', 'type', 'createdAt', 'updatedAt'
@@ -72,8 +72,7 @@ function doGet(e) {
 
     switch (action) {
       case 'getTransactions':
-        ensureFixedExpenseTransactionsForMonth(e.parameter.month);
-        result = getTransactions(e.parameter.month);
+        result = getTransactions(e.parameter.all === 'true' ? null : e.parameter.month);
         break;
       case 'getReceivables':
         result = getAllRecords(SHEETS.RECEIVABLES);
@@ -91,6 +90,7 @@ function doGet(e) {
         result = getAllRecords(SHEETS.FIXED_EXPENSES);
         break;
       case 'testConnection':
+        getAllRecords(SHEETS.ACCOUNTS);
         result = { success: true, message: 'スプレッドシートに接続されました' };
         break;
       default:
@@ -109,48 +109,35 @@ function doGet(e) {
 // POSTリクエストハンドラー
 // ============================================================
 function doPost(e) {
-  const output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
-
+  const output = ContentService.createTextOutput().setMimeType(ContentService.MimeType.JSON);
   try {
-    // POSTボディをJSONとして解析
     const body = JSON.parse(e.postData.contents);
-    const action = body.action || '';
-    let result = {};
-
-    switch (action) {
-      case 'saveTransaction':
-        result = saveRecord(SHEETS.TRANSACTIONS, body);
-        break;
-      case 'saveReceivable':
-        result = saveRecord(SHEETS.RECEIVABLES, body);
-        break;
-      case 'savePayable':
-        result = saveRecord(SHEETS.PAYABLES, body);
-        break;
-      case 'saveAccount':
-        result = saveRecord(SHEETS.ACCOUNTS, body);
-        break;
-      case 'savePartner':
-        result = saveRecord(SHEETS.PARTNERS, body);
-        break;
-      case 'saveFixedExpense':
-        result = saveFixedExpense(body);
-        break;
-      case 'deleteFixedExpense':
-        result = deleteFixedExpense(body.id, body.scope);
-        break;
-      case 'deleteRecord':
-        result = deleteRecord(body.sheet, body.id);
-        break;
-      default:
-        result = { error: 'Unknown action: ' + action };
-    }
-
+    const result = withStoreTransaction(() => {
+      switch (body.action) {
+        case 'saveTransaction': return saveManualTransaction(body);
+        case 'saveReceivable': return saveDebt('receivable', body);
+        case 'savePayable': return saveDebt('payable', body);
+        case 'confirmReceivable': return confirmDebt('receivable', body);
+        case 'confirmPayable': return confirmDebt('payable', body);
+        case 'saveAccount': return saveAccountRecord(body);
+        case 'savePartner':
+          assertVersion(findRecord(SHEETS.PARTNERS, body.id), body);
+          if (!String(body.name || '').trim()) throw new Error('取引先名は必須です');
+          return saveRecord(SHEETS.PARTNERS, body);
+        case 'saveFixedExpense':
+          assertVersion(getFixedExpenseById(body.id), body);
+          requireAccount(body.account);
+          return saveFixedExpense(body);
+        case 'deleteFixedExpense':
+          assertVersion(getFixedExpenseById(body.id), body);
+          return deleteFixedExpense(body.id, body.scope);
+        case 'deleteRecord': return deleteBusinessRecord(body);
+        default: throw new Error('Unknown action');
+      }
+    });
     output.setContent(JSON.stringify(result));
   } catch (err) {
     output.setContent(JSON.stringify({ error: err.message }));
   }
-
   return output;
 }
