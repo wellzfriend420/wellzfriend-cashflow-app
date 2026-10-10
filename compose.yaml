@@ -1,7 +1,7 @@
 name: wfs-cashflow
 services:
   cashflow-web:
-    image: wfs/wellnot-cashflow:0.6.2
+    image: wfs/wellnot-cashflow:0.6.3
     build:
       context: .
       args:
@@ -17,6 +17,9 @@ services:
     pids_limit: 64
     environment:
       APP_COMPANY_NAME: ${APP_COMPANY_NAME:-ウェルノット資金繰り}
+      DIRECT_DEBIT_NOTIFICATIONS: ${DIRECT_DEBIT_NOTIFICATIONS:-false}
+      DIRECT_DEBIT_API_TOKEN: ${DIRECT_DEBIT_API_TOKEN:-}
+      DIRECT_DEBIT_LINE_TARGET: ${DIRECT_DEBIT_LINE_TARGET:-}
       LISTEN_HOST: 0.0.0.0
       PORT: "3000"
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://cashflow.wellzfriend.com}
@@ -38,7 +41,7 @@ services:
       driver: json-file
       options: {max-size: 10m, max-file: "3"}
   backup:
-    image: wfs/wellnot-cashflow:0.6.2
+    image: wfs/wellnot-cashflow:0.6.3
     command: [node, tools/backup-worker.cjs]
     depends_on:
       cashflow-web: {condition: service_healthy}

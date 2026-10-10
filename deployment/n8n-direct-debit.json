@@ -1,0 +1,210 @@
+{
+  "name": "Cashflow - automatic debit reminder",
+  "active": false,
+  "nodes": [
+    {
+      "id": "Daily 10 JST",
+      "name": "Daily 10 JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 10 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Prepare daily batch",
+      "name": "Prepare daily batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cashflow.example.invalid/integrations/direct-debit/prepare",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "Only pending today",
+      "name": "Only pending today",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const b=$input.first().json;\nif(!b.send)return [];\nif(Date.now()>=Date.parse(b.expiresAt)||!Number.isFinite(Date.parse(b.expiresAt)))throw Error('Notification expired; do not send stale batch');\nif(!/^[UCR][0-9a-f]{32}$/.test(b.payload?.to)||b.payload?.messages?.length!==1)throw Error('Invalid batch');\nreturn [{json:b}];"
+      }
+    },
+    {
+      "id": "LINE push",
+      "name": "LINE push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.line.me/v2/bot/message/push",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ \"Bearer \" + $env.LINE_CHANNEL_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "X-Line-Retry-Key",
+              "value": "={{ $json.retryKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "Verify LINE accepted",
+      "name": "Verify LINE accepted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r=$input.first().json,b=$('Only pending today').first().json;\nconst h=Object.fromEntries(Object.entries(r.headers||{}).map(([k,v])=>[k.toLowerCase(),v]));\nconst ok=r.statusCode>=200&&r.statusCode<300;\nconst duplicate=r.statusCode===409&&!!h['x-line-accepted-request-id'];\nif(!ok&&!duplicate)throw Error('LINE request not accepted; retry whole workflow today with stored batch');\nconst requestId=duplicate?h['x-line-accepted-request-id']:h['x-line-request-id'];\nif(!requestId)throw Error('Missing LINE receipt; retry whole workflow today');\nreturn [{json:{day:b.day,retryKey:b.retryKey,requestId}}];"
+      }
+    },
+    {
+      "id": "Record acceptance",
+      "name": "Record acceptance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cashflow.example.invalid/integrations/direct-debit/ack",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Daily 10 JST": {
+      "main": [
+        [
+          {
+            "node": "Prepare daily batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare daily batch": {
+      "main": [
+        [
+          {
+            "node": "Only pending today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only pending today": {
+      "main": [
+        [
+          {
+            "node": "LINE push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LINE push": {
+      "main": [
+        [
+          {
+            "node": "Verify LINE accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify LINE accepted": {
+      "main": [
+        [
+          {
+            "node": "Record acceptance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Tokyo",
+    "executionOrder": "v1",
+    "executionTimeout": 120,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  }
+}

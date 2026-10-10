@@ -7,8 +7,10 @@ const { openStore } = require('./storage.cjs');
 const createLedger = require('./domain/ledger.cjs');
 const { createAuth } = require('./auth.cjs');
 const { readStatus } = require('./backup.cjs');
+const {timingSafeEqual}=require('node:crypto');
+const {createNotifications}=require('./direct-debit.cjs');
 const root = path.resolve(__dirname, '..');
-const files = new Map(['index.html','login.html','assets/styles.css','assets/app.js','assets/overdue.js','assets/corrections.js','assets/schedules.js','assets/schedule-input.js','assets/login.js','assets/cashflow-math.js','assets/vendor/xlsx.full.min.js'].map(file => ['/' + file, path.join(root, file)]));
+const files = new Map(['index.html','login.html','assets/styles.css','assets/app.js','assets/overdue.js','assets/corrections.js','assets/schedules.js','assets/schedule-input.js','assets/login.js','assets/direct-debit.js','assets/cashflow-math.js','assets/vendor/xlsx.full.min.js'].map(file => ['/' + file, path.join(root, file)]));
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8' };
 function fault(status, message) { return Object.assign(new Error(message), {status}); }
 async function readBody(req) {
@@ -21,6 +23,8 @@ async function readBody(req) {
 async function createApplication(options = {}) {
   const origin = new URL(options.origin || process.env.PUBLIC_ORIGIN || 'http://127.0.0.1:3310');
   const secure = origin.protocol === 'https:';
+  const notificationOptions=options.notifications||{allowed:process.env.DIRECT_DEBIT_NOTIFICATIONS==='true',token:process.env.DIRECT_DEBIT_API_TOKEN||'',target:process.env.DIRECT_DEBIT_LINE_TARGET||''};
+  if(notificationOptions.allowed&&(!/^[A-Za-z0-9_-]{32,128}$/.test(notificationOptions.token||'')||!secure))throw new Error('Notification HTTPS and strong token are required');
   const companyName=options.companyName||process.env.APP_COMPANY_NAME||'ウェルノット資金繰り';
   if(typeof companyName!=='string'||!companyName.trim()||companyName.length>120)throw new Error('Invalid company name');
   const escapedCompany=companyName.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -28,6 +32,7 @@ async function createApplication(options = {}) {
   if(!secure && !['127.0.0.1','localhost','[::1]'].includes(origin.hostname)) throw new Error('HTTPS is required outside localhost');
   const store=options.store || openStore(process.env.DATABASE_PATH || path.join(root,'var/data/cashflow.sqlite'));
   const ledger=createLedger(store,{...(options.today?{today:options.today}:{}),companyName}), auth=await createAuth(store,{secure});
+  const notifications=createNotifications(store,ledger,{...notificationOptions,origin:origin.origin,companyName});
   let maintenanceDay='';
   const currentDay=()=>options.today?options.today():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const maintain=()=>{try{if(maintenanceDay!==currentDay()){ledger.replenish();maintenanceDay=currentDay();}}catch{console.error('{"event":"fixed_expense_maintenance_failed"}');}};
@@ -49,6 +54,16 @@ async function createApplication(options = {}) {
         store.db.prepare('SELECT 1').get(); return json(res,maintenanceDay===currentDay()?200:503,{status:maintenanceDay===currentDay()?'ok':'maintenance_failed'});
       }
       if(req.headers.host!==origin.host) throw fault(421,'接続先が一致しません');
+      if(url.pathname.startsWith('/integrations/direct-debit/')){
+        if(!notificationOptions.allowed)throw fault(404,'見つかりません');
+        const expected=Buffer.from('Bearer '+notificationOptions.token),received=Buffer.from(req.headers.authorization||'');
+        if(received.length!==expected.length||!timingSafeEqual(received,expected))throw fault(401,'認証できません');
+        if(req.method!=='POST')throw fault(405,'この操作は利用できません');
+        const body=await readBody(req);
+        if(url.pathname==='/integrations/direct-debit/prepare')return json(res,200,notifications.prepare());
+        if(url.pathname==='/integrations/direct-debit/ack')return json(res,200,notifications.acknowledge(body));
+        throw fault(404,'見つかりません');
+      }
       if(!['GET','POST','HEAD'].includes(req.method)) throw fault(405,'この操作は利用できません');
       if(req.method==='POST' && req.headers.origin!==origin.origin) throw fault(403,'接続元を確認できません。画面を開き直してください');
       if(req.headers['sec-fetch-site']==='cross-site') throw fault(403,'接続元を確認できません');
@@ -72,8 +87,9 @@ async function createApplication(options = {}) {
         }
         if(url.pathname==='/api/v1/backup-status' && req.method==='GET') return json(res,200,readStatus(statusDir));
         if(url.pathname!=='/api/v1') throw fault(404,'見つかりません');
+        if(req.method==='GET'&&url.searchParams.get('action')==='getDirectDebitNotification')return json(res,200,notifications.settings());
         if(req.method==='GET') return json(res,200,ledger.get(url.searchParams.get('action'),Object.fromEntries(url.searchParams)));
-        if(req.method==='POST') return json(res,200,ledger.post(await readBody(req),session.userId));
+        if(req.method==='POST') {const body=await readBody(req);return json(res,200,body.action==='saveDirectDebitNotification'?notifications.save(body,session.userId):ledger.post(body,session.userId));}
         throw fault(405,'この操作は利用できません');
       }
       if(!['GET','HEAD'].includes(req.method)) throw fault(405,'この操作は利用できません');

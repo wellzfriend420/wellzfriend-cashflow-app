@@ -1,5 +1,9 @@
 # SCHEMA
 
+## SQLite schema4 / Node.js 0.6.3 通知設定
+
+構造移行なし。settingsの`directDebitNotification`にenabled・selected・version、`directDebitBatch_YYYY-MM-DD`に当日固定本文・送信先・明細ID・再送キー・pending/sent/empty・受付記録を保存。業務行を変更しない。選択キーはfixed:マスタID、schedule:予定表ID、transaction:明細ID。送信記録は既存バックアップに含まれる。
+
 ## SQLite schema4 / Node.js 0.6.1
 
 構造移行なし。既存settings内のpending_history_（変更前後・操作者・時刻）、pending_cancel_（売掛買掛残予定取消）、pending_leg_override_（予定表の個別例外）、pending_request_（再送防止）を保存。固定支出の個別変更・取消は再生成で戻さない。残予定取消は既払額を保持し、実績として扱わない。
