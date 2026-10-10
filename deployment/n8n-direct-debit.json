@@ -72,13 +72,11 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.line.me/v2/bot/message/push",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "={{ \"Bearer \" + $env.LINE_CHANNEL_ACCESS_TOKEN }}"
-            },
             {
               "name": "X-Line-Retry-Key",
               "value": "={{ $json.retryKey }}"

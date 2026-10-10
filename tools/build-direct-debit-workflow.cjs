@@ -10,7 +10,7 @@ if(!b.send)return [];
 if(Date.now()>=Date.parse(b.expiresAt)||!Number.isFinite(Date.parse(b.expiresAt)))throw Error('Notification expired; do not send stale batch');
 if(!/^[UCR][0-9a-f]{32}$/.test(b.payload?.to)||b.payload?.messages?.length!==1)throw Error('Invalid batch');
 return [{json:b}];`});
-node('LINE push','httpRequest',4.2,{method:'POST',url:'https://api.line.me/v2/bot/message/push',sendHeaders:true,headerParameters:{parameters:[{name:'Authorization',value:'={{ "Bearer " + $env.LINE_CHANNEL_ACCESS_TOKEN }}'},{name:'X-Line-Retry-Key',value:'={{ $json.retryKey }}'}]},sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify($json.payload) }}',options:{timeout:15000,response:{response:{fullResponse:true,neverError:true,responseFormat:'json'}}}},{retryOnFail:true,maxTries:3,waitBetweenTries:5000});
+node('LINE push','httpRequest',4.2,{method:'POST',url:'https://api.line.me/v2/bot/message/push',authentication:'genericCredentialType',genericAuthType:'httpHeaderAuth',sendHeaders:true,headerParameters:{parameters:[{name:'X-Line-Retry-Key',value:'={{ $json.retryKey }}'}]},sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify($json.payload) }}',options:{timeout:15000,response:{response:{fullResponse:true,neverError:true,responseFormat:'json'}}}},{retryOnFail:true,maxTries:3,waitBetweenTries:5000});
 node('Verify LINE accepted','code',2,{jsCode:`const r=$input.first().json,b=$('Only pending today').first().json;
 const h=Object.fromEntries(Object.entries(r.headers||{}).map(([k,v])=>[k.toLowerCase(),v]));
 const ok=r.statusCode>=200&&r.statusCode<300;

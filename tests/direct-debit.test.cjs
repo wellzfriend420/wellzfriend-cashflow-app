@@ -91,6 +91,7 @@ test('backup and restore preserve setting and dedupe receipt without schema chan
 });
 test('n8n template 10 JST, inactive, one push, expiry guard, 200/409 receipts and failure isolation',()=>{
  const w=require('../deployment/n8n-direct-debit.json');assert.equal(w.active,false);assert.equal(w.settings.timezone,'Asia/Tokyo');assert.equal(w.nodes[0].parameters.rule.interval[0].expression,'0 0 10 * * *');assert.equal(w.nodes.filter(n=>n.parameters.url==='https://api.line.me/v2/bot/message/push').length,1);
+ const push=w.nodes.find(n=>n.name==='LINE push');assert.equal(push.parameters.genericAuthType,'httpHeaderAuth');assert.ok(!JSON.stringify(w).includes('$env.LINE_'));assert.ok(!push.parameters.headerParameters.parameters.some(h=>h.name==='Authorization'));
  const get=name=>w.nodes.find(n=>n.name===name).parameters.jsCode;
  const execute=(code,input,batch)=>vm.runInNewContext('(function(){'+code+'})()',{Date,$input:{first:()=>({json:input})},$:()=>({first:()=>({json:batch})})});
  assert.equal(execute(get('Only pending today'),{send:false}).length,0);assert.throws(()=>execute(get('Only pending today'),{send:true,expiresAt:'2000-01-01'}),/expired/);
